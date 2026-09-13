@@ -7,7 +7,7 @@ const STORES = [
   ['merco', 'Merco'], ['alsuper', 'Alsuper'], ['farmacia', 'Farmacia']
 ];
 
-const NOISE = /^(sub\s*total|subtotal|total|iva|i\.v\.a|efectivo|cambio|tarjeta|credito|débito|debito|propina|gracias|caja|cajero|caj\b|folio|ticket|rfc|tel|telefono|teléfono|suc\b|sucursal|direccion|dirección|fecha|hora|art[ií]culos|piezas|no\.|num|factura|cliente|www|http|aut\b|terminal|referencia|importe|descuento|ahorro|puntos|monedero|visa|master|autorizacion|autorización|cp\b|s\.a\.|sa de cv|c\.p\.)/i;
+const NOISE = /^(sub\s*total|subtotal|total|iva|i\.v\.a|tax|efectivo|cambio|change\s*due|tarjeta|credito|débito|debito|debit\s*tend|eft\s*debit|propina|gracias|thank\s*you|caja|cajero|caj\b|folio|ticket|rfc|tel|telefono|teléfono|suc\b|sucursal|direccion|dirección|fecha|hora|art[ií]culos|items\s*sold|piezas|no\.|num|factura|cliente|www|http|aut\b|terminal|referencia|ref\s*#|network\s*id|appr\s*code|account\s*#|importe|descuento|ahorro|puntos|monedero|visa|master|autorizacion|autorización|cp\b|s\.a\.|sa de cv|c\.p\.|reduced to clear|^was\b|pay from|total purchase|change due|manager|store#|st#|op#|te#|tr#)/i;
 
 const clean = (s) => s.replace(/\s+/g, ' ').trim();
 
@@ -58,16 +58,58 @@ function detectTotal(text) {
   return total;
 }
 
+// Líneas que solo aportan cantidad/precio a la línea de producto anterior
+// (peso por kg/lb, o promociones tipo "6 AT 1 FOR 0.33").
+const CONT_WEIGHT = /^(\d+(?:[.,]\d+)?)\s*(lb|kg|g|oz)\b.*@/i;
+const CONT_MULTIBUY = /^(\d{1,3})\s+(?:at|for|por|x)\b/i;
+const isContinuation = (line) => CONT_WEIGHT.test(line) || CONT_MULTIBUY.test(line);
+
+const PRICE_RE = /(?:\$\s*)?(\d{1,5}(?:[.,]\d{3})*[.,]\d{2,3})\s*[A-Z]?\s*$/;
+
+// Busca un precio al final de la línea. El OCR de tickets térmicos suele pegar
+// el código de impuesto ("O", "T", "X"...) justo después del precio y leerlo
+// como un dígito de más ("2.310", "3.341"); como en un ticket nunca hay
+// fracciones de centavo, un tercer decimal siempre es ese código mal leído.
+function matchPrice(line) {
+  const m = line.match(PRICE_RE);
+  if (!m) return null;
+  let numStr = m[1];
+  if (/[.,]\d{3}$/.test(numStr)) numStr = numStr.slice(0, -1);
+  const value = toNumber(numStr);
+  return value === null ? null : { value, index: m.index };
+}
+
+function extractPrice(line) {
+  return matchPrice(line)?.value ?? null;
+}
+
+// Limpia restos que deja el OCR entre el nombre del producto y el precio:
+// códigos de barras/SKU largos, una letra suelta de código de impuesto
+// ("F"/"T"/"X"/"O") y puntuación sobrante (—, +, *, comillas...). Se repite
+// hasta que ya no cambia porque suelen venir encimados.
+function stripTrailingNoise(line) {
+  let prev;
+  do {
+    prev = line;
+    line = line.replace(/\b\d{6,}[A-Z]{0,3}\b/g, ' ');
+    line = line.replace(/[”“"'’.,:*+\-—]+$/, '');
+    line = line.replace(/\s+\b[A-Z]\b$/, '');
+    line = clean(line);
+  } while (line !== prev);
+  return line;
+}
+
 function parseLine(raw) {
   let line = clean(raw);
   if (line.length < 3) return null;
+  if (line.includes('%')) return null;
   if (NOISE.test(line)) return null;
   if (!/[a-záéíóúñ]{3,}/i.test(line)) return null;
 
   let precio = null;
-  const priceMatch = line.match(/(?:\$\s*)?(\d{1,5}(?:[.,]\d{3})*[.,]\d{2})\s*[A-Z]?\s*$/);
+  const priceMatch = matchPrice(line);
   if (priceMatch) {
-    precio = toNumber(priceMatch[1]);
+    precio = priceMatch.value;
     line = clean(line.slice(0, priceMatch.index));
   }
 
@@ -95,7 +137,7 @@ function parseLine(raw) {
 
   line = line.replace(/^[\d\s*#.,:-]+/, '');
   line = line.replace(/\s*\$?\s*\d+[.,]\d{2}\s*$/, '');
-  line = clean(line);
+  line = stripTrailingNoise(line);
 
   if (line.length < 3) return null;
   if (!/[a-záéíóúñ]{3,}/i.test(line)) return null;
@@ -106,10 +148,31 @@ function parseLine(raw) {
 }
 
 export function parseReceipt(text) {
-  const lines = String(text || '').split('\n');
+  const allLines = String(text || '').split('\n');
   const tienda = detectStore(text);
+
+  // Todo lo que sigue al SUBTOTAL/TOTAL es pago/propina/folio: nunca productos.
+  // Se prioriza "subtotal" porque el OCR de tickets térmicos pierde la palabra
+  // "total" con más frecuencia (queda pegada a los dígitos del importe).
+  const subtotalIdx = allLines.findIndex((l) => /sub\s*total/i.test(l));
+  const totalIdx = allLines.findIndex((l) => /total/i.test(l) && !/sub\s*total/i.test(l));
+  const cutoff = subtotalIdx > -1 ? subtotalIdx : totalIdx;
+  const lines = cutoff > -1 ? allLines.slice(0, cutoff) : allLines;
+
   const raw = [];
   for (const line of lines) {
+    const clean_ = clean(line);
+    if (isContinuation(clean_) && raw.length && raw[raw.length - 1].precio === null) {
+      const last = raw[raw.length - 1];
+      const price = extractPrice(clean_);
+      if (price !== null) last.precio = price;
+      const multi = clean_.match(CONT_MULTIBUY);
+      if (multi) {
+        const v = parseInt(multi[1], 10);
+        if (v > 0 && v <= 99) last.cantidad = v;
+      }
+      continue;
+    }
     const item = parseLine(line);
     if (item) raw.push(item);
   }
@@ -122,12 +185,25 @@ export function parseReceipt(text) {
     return true;
   });
 
+  // Clave de comparación tolerante a ruido del OCR: solo letras, sin acentos ni
+  // restos de código de barras, para agrupar líneas del mismo producto que el
+  // OCR leyó con pequeñas variaciones (ej. "Ruck Sack —" vs "Ruck Sack +").
+  const mergeKey = (nombre) => nombre.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z]/g, '');
+
   const merged = [];
   for (const it of items) {
     it.nombre = it.nombre.replace(/\b(\d+(?:[.,]\d+)?)\s?(l|ml|kg|g|pz|pzs)\b/gi, (m, n, u) => n + (u.toLowerCase() === 'l' ? 'L' : u.toLowerCase()));
-    const same = merged.find((m) => m.nombre.toLowerCase() === it.nombre.toLowerCase() && m.precio === it.precio);
-    if (same) same.cantidad += it.cantidad;
-    else merged.push(it);
+    const key = mergeKey(it.nombre);
+    const same = merged.find((m) => {
+      if (m.precio !== it.precio) return false;
+      if (m.nombre.toLowerCase() === it.nombre.toLowerCase()) return true;
+      const mkey = mergeKey(m.nombre);
+      return key.length >= 4 && mkey.length >= 4 && (mkey === key || mkey.startsWith(key) || key.startsWith(mkey));
+    });
+    if (same) {
+      same.cantidad += it.cantidad;
+      if (it.nombre.length < same.nombre.length) same.nombre = it.nombre;
+    } else merged.push(it);
   }
 
   return {
