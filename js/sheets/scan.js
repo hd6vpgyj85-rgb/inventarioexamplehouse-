@@ -109,8 +109,14 @@ export function openReviewSheet(parsed, onDone, noResults = false) {
             ${match ? `<span>Existe · ${num(match.cantidad)} ${esc(match.unidad)} → ${num((Number(match.cantidad) || 0) + (Number(it.cantidad) || 0))}</span>` : '<span class="new-badge">NUEVO</span>'}
           </div>
         </div>
-        <input class="num" data-f="cantidad" type="number" inputmode="decimal" step="any" min="0" value="${esc(it.cantidad)}" aria-label="Cantidad">
-        <input class="num" data-f="precio" type="number" inputmode="decimal" step="0.01" min="0" value="${it.precio ?? ''}" placeholder="$" aria-label="Precio">
+        <div class="num-col">
+          <span class="num-label">Cant.</span>
+          <input class="num" data-f="cantidad" type="number" inputmode="decimal" step="any" min="0" value="${esc(it.cantidad)}" aria-label="Cantidad">
+        </div>
+        <div class="num-col">
+          <span class="num-label">Precio</span>
+          <input class="num" data-f="precio" type="number" inputmode="decimal" step="0.01" min="0" value="${it.precio ?? ''}" placeholder="$" aria-label="Precio">
+        </div>
         <button type="button" class="del" data-del aria-label="Quitar">${svg.trash}</button>
       </div>`;
   };
