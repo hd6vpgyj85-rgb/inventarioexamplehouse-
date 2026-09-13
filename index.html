@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+<meta name="theme-color" content="#f2f2f7">
+<meta name="description" content="Inventario doméstico local y privado. Escanea recibos y controla tu despensa.">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Despensa">
+<title>Despensa — Inventario</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+<div id="app">
+  <header class="topbar" id="topbar">
+    <div class="topbar-inner">
+      <button class="topbar-btn" id="topbarBack" hidden aria-label="Atrás">
+        <svg viewBox="0 0 24 24" class="icon"><path d="M15 5l-7 7 7 7"/></svg>
+      </button>
+      <h1 class="topbar-title" id="topbarTitle">Inicio</h1>
+      <button class="topbar-btn" id="topbarAction" hidden></button>
+    </div>
+  </header>
+
+  <main id="view" class="view" tabindex="-1"></main>
+
+  <nav class="tabbar" id="tabbar" role="tablist">
+    <button class="tab" data-route="home" role="tab" aria-selected="true">
+      <svg viewBox="0 0 24 24" class="icon"><path d="M4 10.5L12 4l8 6.5V19a1 1 0 01-1 1h-4v-6H9v6H5a1 1 0 01-1-1z"/></svg>
+      <span>Inicio</span>
+    </button>
+    <button class="tab" data-route="inventory" role="tab" aria-selected="false">
+      <svg viewBox="0 0 24 24" class="icon"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+      <span>Inventario</span>
+    </button>
+    <button class="tab tab-scan" data-action="scan" aria-label="Escanear recibo">
+      <span class="scan-fab">
+        <svg viewBox="0 0 24 24" class="icon"><path d="M4 8V5a1 1 0 011-1h3M16 4h3a1 1 0 011 1v3M20 16v3a1 1 0 01-1 1h-3M8 20H5a1 1 0 01-1-1v-3M7 12h10"/></svg>
+      </span>
+    </button>
+    <button class="tab" data-route="shopping" role="tab" aria-selected="false">
+      <svg viewBox="0 0 24 24" class="icon"><path d="M5 7h14l-1.2 11.1a1 1 0 01-1 .9H7.2a1 1 0 01-1-.9zM9 7V5.5a3 3 0 016 0V7"/></svg>
+      <span>Mandado</span>
+    </button>
+    <button class="tab" data-route="more" role="tab" aria-selected="false">
+      <svg viewBox="0 0 24 24" class="icon"><circle cx="6" cy="12" r="1.6" fill="currentColor"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/><circle cx="18" cy="12" r="1.6" fill="currentColor"/></svg>
+      <span>Más</span>
+    </button>
+  </nav>
+</div>
+
+<div id="sheetRoot"></div>
+<div id="toastRoot" class="toast-root" aria-live="polite"></div>
+
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
