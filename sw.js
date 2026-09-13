@@ -1,4 +1,4 @@
-const VERSION = 'despensa-v1';
+const VERSION = 'despensa-v2';
 const CORE = [
   './',
   './index.html',
@@ -63,13 +63,17 @@ self.addEventListener('fetch', (e) => {
     return;
   }
 
+  // Red primero para el código propio (JS/CSS/HTML): así una actualización del
+  // sitio se ve de inmediato en vez de servir para siempre lo que ya quedó en
+  // caché. Si no hay red, cae a la copia guardada para que siga funcionando
+  // offline.
   e.respondWith(
-    caches.match(req).then((hit) => hit || fetch(req).then((res) => {
+    fetch(req).then((res) => {
       if (res.ok) {
         const clone = res.clone();
         caches.open(VERSION).then((c) => c.put(req, clone));
       }
       return res;
-    }).catch(() => hit))
+    }).catch(() => caches.match(req))
   );
 });
