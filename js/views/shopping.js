@@ -1,6 +1,6 @@
-import { state, saveShoppingItem, deleteShoppingItem, clearBoughtShopping, addManualShoppingItem, syncShopping } from '../store.js';
-import { esc, num, svg, haptic } from '../util.js';
-import { emptyState, openSheet, toast, confirmSheet } from '../ui.js';
+import { state, saveShoppingItem, deleteShoppingItem, clearBoughtShopping, addManualShoppingItem, toggleShoppingForProduct, findShoppingItemForProduct } from '../store.js';
+import { esc, num, svg, haptic, normalize, status } from '../util.js';
+import { emptyState, openSheet, toast } from '../ui.js';
 
 export function renderShopping({ rerender }) {
   const pending = state.shopping.filter((i) => !i.comprado);
@@ -24,7 +24,7 @@ export function renderShopping({ rerender }) {
       icon: svg.cart,
       title: 'Lista vacía',
       text: 'Cuando un producto se agote o baje del mínimo aparecerá aquí automáticamente.',
-      actionLabel: 'Agregar a mano',
+      actionLabel: 'Agregar producto',
       actionId: 'shopEmptyAdd'
     }) : `
       ${pending.length ? `<div class="list">${pending.map(itemRow).join('')}</div>` : `<div class="card card-pad" style="display:flex;gap:12px;align-items:center"><span class="dot green"></span><div><div style="font-weight:500">Nada pendiente</div><div class="tiny muted">Tu despensa está surtida.</div></div></div>`}
@@ -42,8 +42,8 @@ export function renderShopping({ rerender }) {
   return {
     html,
     mount(root) {
-      root.querySelector('#shopAdd')?.addEventListener('click', () => openAddItem(rerender));
-      root.querySelector('#shopEmptyAdd')?.addEventListener('click', () => openAddItem(rerender));
+      root.querySelector('#shopAdd')?.addEventListener('click', () => openPicker(rerender));
+      root.querySelector('#shopEmptyAdd')?.addEventListener('click', () => openPicker(rerender));
       root.querySelector('#shopClear')?.addEventListener('click', async () => {
         await clearBoughtShopping();
         rerender();
@@ -69,9 +69,78 @@ export function renderShopping({ rerender }) {
   };
 }
 
-function openAddItem(rerender) {
-  openSheet({
+function openPicker(rerender) {
+  let q = '';
+
+  const rowHtml = (p) => {
+    const added = !!findShoppingItemForProduct(p.id);
+    return `
+      <div class="checkrow tappable" data-pick="${p.id}">
+        <span class="checkbox ${added ? 'is-added' : ''}">${svg.check}</span>
+        <div class="row-main">
+          <div class="row-title">${esc(p.nombre)}</div>
+          <div class="row-sub">${[p.marca, num(p.cantidad) + ' ' + esc(p.unidad)].filter(Boolean).join(' · ')}</div>
+        </div>
+        <span class="dot ${status(p)}"></span>
+      </div>`;
+  };
+
+  const bodyHtml = () => {
+    if (!state.products.length) {
+      return `${emptyState({ icon: svg.box, title: 'Aún no tienes productos', text: 'Agrega productos a tu inventario primero, o escribe uno suelto abajo.' })}
+        <button class="btn btn-secondary" id="pickManual">Escribir un producto suelto</button>`;
+    }
+    const term = normalize(q);
+    const filtered = term
+      ? state.products.filter((p) => normalize(p.nombre).includes(term) || normalize(p.marca).includes(term))
+      : state.products;
+    const groups = new Map();
+    filtered.forEach((p) => {
+      const cat = p.categoria || 'Otros';
+      if (!groups.has(cat)) groups.set(cat, []);
+      groups.get(cat).push(p);
+    });
+
+    return `
+      <div class="search-wrap">${svg.search}<input class="search" id="pickSearch" type="search" placeholder="Buscar en tu inventario" value="${esc(q)}"></div>
+      ${filtered.length ? [...groups.entries()].map(([cat, items]) => `
+        <div class="section-title">${esc(cat)}</div>
+        <div class="list">${items.map(rowHtml).join('')}</div>
+      `).join('') : `<p class="muted tiny" style="text-align:center;margin-top:20px">Sin resultados</p>`}
+      <button class="btn btn-secondary" style="margin-top:20px" id="pickManual">Escribir un producto suelto</button>`;
+  };
+
+  return openSheet({
     title: 'Agregar al mandado',
+    body: '',
+    left: { label: 'Listo', strong: true },
+    onMount: (handle) => {
+      const render = () => {
+        handle.setBody(bodyHtml());
+        bind();
+      };
+      const bind = () => {
+        handle.body.querySelector('#pickSearch')?.addEventListener('input', (e) => { q = e.target.value; render(); setTimeout(() => { const el = handle.body.querySelector('#pickSearch'); el?.focus(); el?.setSelectionRange(q.length, q.length); }, 0); });
+        handle.body.querySelectorAll('[data-pick]').forEach((row) => {
+          row.addEventListener('click', async () => {
+            const product = state.products.find((p) => p.id === row.dataset.pick);
+            if (!product) return;
+            haptic();
+            const result = await toggleShoppingForProduct(product);
+            row.querySelector('.checkbox').classList.toggle('is-added', !!result);
+            rerender();
+          });
+        });
+        handle.body.querySelector('#pickManual')?.addEventListener('click', () => openManualItem(rerender));
+      };
+      render();
+    }
+  });
+}
+
+function openManualItem(rerender) {
+  openSheet({
+    title: 'Producto suelto',
     body: `
       <div class="list">
         <div class="field"><label>Producto</label><input id="siName" placeholder="Ej. Servilletas" autocomplete="off"></div>
