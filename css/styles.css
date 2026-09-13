@@ -144,9 +144,14 @@ svg [fill="currentColor"] { fill: currentColor; stroke: none; }
   letter-spacing: 0.04em;
   color: var(--label-3);
   margin: var(--sp-6) var(--sp-2) var(--sp-2);
+  padding: var(--sp-1) 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
+  position: sticky;
+  top: calc(48px + env(safe-area-inset-top, 0px));
+  background: var(--bg);
+  z-index: 5;
 }
 .section-title button { color: var(--blue); font-size: 13px; font-weight: 600; text-transform: none; letter-spacing: 0; }
 .muted { color: var(--label-3); }
@@ -473,6 +478,7 @@ svg [fill="currentColor"] { fill: currentColor; stroke: none; }
 .sheet-header button.strong { font-weight: 600; }
 .sheet-header button:disabled { color: var(--label-4); }
 .sheet-body { overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 0 var(--sp-4) var(--sp-5); }
+.sheet-body .section-title { top: 0; background: var(--sheet); }
 .sheet-footer { flex: none; padding: var(--sp-3) var(--sp-4) var(--sp-4); border-top: 0.5px solid var(--separator); background: var(--sheet); }
 
 @media (min-width: 768px) {
@@ -552,6 +558,7 @@ svg [fill="currentColor"] { fill: currentColor; stroke: none; }
 }
 .checkbox svg { width: 14px; height: 14px; stroke-width: 3; }
 .checked .checkbox { background: var(--green); border-color: var(--green); color: #fff; }
+.checkbox.is-added { background: var(--blue); border-color: var(--blue); color: #fff; }
 .checked .row-title { color: var(--label-3); text-decoration: line-through; }
 
 .hidden { display: none !important; }

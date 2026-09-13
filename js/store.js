@@ -219,6 +219,30 @@ export async function addManualShoppingItem({ nombre, cantidad = 1, unidad = 'pz
   return item;
 }
 
+export const findShoppingItemForProduct = (productId) => state.shopping.find((s) => s.productId === productId && !s.comprado);
+
+// Agrega o quita un producto del mandado con un solo toque, sin escribir nada.
+export async function toggleShoppingForProduct(product) {
+  const existing = findShoppingItemForProduct(product.id);
+  if (existing) {
+    await deleteShoppingItem(existing.id);
+    return null;
+  }
+  const item = {
+    id: uid(),
+    productId: product.id,
+    nombre: product.nombre,
+    marca: product.marca || '',
+    unidad: product.unidad || 'pza',
+    cantidad: recommendedQty(product),
+    comprado: false,
+    auto: false,
+    creado: new Date().toISOString()
+  };
+  await saveShoppingItem(item);
+  return item;
+}
+
 /* ---------- Configuración ---------- */
 
 export async function setSetting(key, value) {
