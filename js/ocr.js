@@ -4,8 +4,8 @@ const LOCAL = 'vendor/tesseract';
 const REMOTE = {
   script: `${CDN}/tesseract.js@5.1.1/dist/tesseract.min.js`,
   workerPath: `${CDN}/tesseract.js@5.1.1/dist/worker.min.js`,
-  corePath: `${CDN}/tesseract.js-core@5.1.0`,
-  langPath: `${CDN}/@tesseract.js-data/spa@4.0.0/4.0.0`
+  corePath: `${CDN}/tesseract.js-core@5.1.1`,
+  langPath: `${CDN}/@tesseract.js-data/spa@1.0.0/4.0.0`
 };
 
 const VENDORED = {
@@ -90,27 +90,43 @@ export async function preprocess(file, maxSide = 1600) {
   return canvas;
 }
 
+const TIMEOUT_MS = 45000;
+
+function withTimeout(promise, ms, message) {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(message)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
 export async function recognize(file, onProgress) {
   const { lib, paths } = await loadEngine();
   onProgress?.({ status: 'Preparando imagen', progress: 0.05 });
   const canvas = await preprocess(file);
   onProgress?.({ status: 'Leyendo recibo', progress: 0.1 });
 
-  const worker = await lib.createWorker('spa', 1, {
-    workerPath: paths.workerPath,
-    corePath: paths.corePath,
-    langPath: paths.langPath,
-    gzip: true,
-    logger: (m) => {
-      if (m.status === 'recognizing text') onProgress?.({ status: 'Leyendo recibo', progress: 0.15 + m.progress * 0.8 });
-      else if (m.status && /load|download|initial/i.test(m.status)) onProgress?.({ status: 'Preparando motor OCR', progress: 0.1 });
-    },
-    errorHandler: () => {}
-  });
+  let workerError = null;
+  const worker = await withTimeout(
+    lib.createWorker('spa', 1, {
+      workerPath: paths.workerPath,
+      corePath: paths.corePath,
+      langPath: paths.langPath,
+      gzip: true,
+      logger: (m) => {
+        if (m.status === 'recognizing text') onProgress?.({ status: 'Leyendo recibo', progress: 0.15 + m.progress * 0.8 });
+        else if (m.status && /load|download|initial/i.test(m.status)) onProgress?.({ status: 'Preparando motor OCR', progress: 0.1 });
+      },
+      errorHandler: (err) => { workerError = err; }
+    }),
+    TIMEOUT_MS,
+    'El motor OCR tardó demasiado en cargar. Revisa tu conexión e intenta de nuevo.'
+  );
 
   try {
     await worker.setParameters({ tessedit_pageseg_mode: '6', preserve_interword_spaces: '1' });
-    const { data } = await worker.recognize(canvas);
+    const { data } = await withTimeout(worker.recognize(canvas), TIMEOUT_MS, 'La lectura del recibo tardó demasiado. Intenta con otra foto.');
+    if (workerError) throw new Error(typeof workerError === 'string' ? workerError : 'Error interno del motor OCR');
     onProgress?.({ status: 'Listo', progress: 1 });
     return data.text || '';
   } finally {
